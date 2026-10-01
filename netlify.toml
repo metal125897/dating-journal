@@ -1,6 +1,10 @@
 [build]
   command = "npm run build:api"
   publish = "api-public"
+[build.environment]
+  # Public settings were imported with an immutable secret flag. Only these
+  # known public values are exempt; DATABASE_URL and GIGACHAT_AUTH_KEY stay scanned.
+  SECRETS_SCAN_OMIT_KEYS = "FRONTEND_ORIGIN,GIGACHAT_MODEL,GIGACHAT_SCOPE"
 [functions]
   directory = "functions"
   node_bundler = "esbuild"

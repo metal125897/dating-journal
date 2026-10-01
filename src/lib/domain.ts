@@ -59,7 +59,7 @@ export function validateResult(raw:unknown,s:Workspace,pid:string):Result {
  for(const block of result.blocks) {
   if(!["basis","hypothesis"].includes(block.kind)&&!block.sources.length)fail("invalid_sources","У вывода нет проверяемых источников",502);
   for(const source of block.sources){const original=sources.get(source.id);if(!original||!source.quote.trim()||!original.text.includes(source.quote))fail("invalid_sources","Модель прислала неподтверждённый источник",502);source.label=original.label;}
-  if(block.kind==="pattern") {const used=entries.filter(e=>block.sources.some(x=>x.id===e.id));if(new Set(used.map(e=>e.id)).size<2||new Set(used.map(e=>e.eventDate+":"+e.text)).size<2)fail("invalid_sources","Повторение не подтверждено разными эпизодами",502);}
+  if(block.kind==="pattern") {const used=entries.filter(e=>block.sources.some(x=>x.id===e.id));if(new Set(used.map(e=>e.id)).size<2||new Set(used.map(e=>e.eventDate)).size<2)fail("invalid_sources","Повторение не подтверждено разными эпизодами",502);}
  }
  for(const addition of result.additions||[])if(!sources.has(addition.sourceId)||!s.sessions.some(x=>x.personId===pid&&x.packets.some(p=>p.answers.some((a,i)=>!a.skipped&&p.id+":"+i===addition.sourceId))||x.personId===pid&&x.amendments.some(a=>a.id===addition.sourceId)))fail("invalid_sources","Дополнение не связано с ответом",502);
  return result;
@@ -87,5 +87,6 @@ export function applyCommand(original:Workspace,c:Command,now=new Date().toISOSt
 export function localDate(d=new Date()) {return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
 export function age(birth:string,today=localDate()){const [y,m,d]=birth.split("-").map(Number);const [ty,tm,td]=today.split("-").map(Number);return ty-y-(tm<m||tm===m&&td<d?1:0);}
 export function plural(n:number,forms:[string,string,string]){const a=Math.abs(n)%100,b=a%10;return forms[a>=11&&a<=14?2:b===1?0:b>=2&&b<=4?1:2];}
+
 
 

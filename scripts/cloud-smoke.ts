@@ -2,11 +2,17 @@ import {GET,POST} from "../src/server/journal";
 import {POST as AI} from "../src/server/ai";
 import {readWorkspace} from "../src/lib/repository";
 import {Command,Workspace,localDate} from "../src/lib/domain";
+import {Agent,fetch as httpFetch} from "undici";
+const smokeAgent=new Agent({connections:2,pipelining:0,connect:{timeout:10000}});
+const fetch=(url:string,options:object={})=>httpFetch(url,{...options,dispatcher:smokeAgent});
+const apiBase=process.env.SMOKE_API_BASE?.replace(/\/$/,"");
+async function snapshot():Promise<Workspace>{if(!apiBase)return readWorkspace();const r=await fetch(apiBase+"/.netlify/functions/journal",{signal:AbortSignal.timeout(60000)});const data=await r.json() as {code?:string;state:Workspace};if(!r.ok)throw new Error(data.code||"read failed");return data.state;}
+async function send(route:"journal"|"ai",request:Request){return apiBase?fetch(apiBase+"/.netlify/functions/"+route,{method:request.method,headers:request.headers,body:await request.text(),signal:AbortSignal.timeout(65000)}):route==="journal"?POST(request):AI(request);}
 let personId:string|undefined;let initialConsent:boolean|undefined;let step="initial";
-async function command(c:Command,requestId=crypto.randomUUID()){const s=await readWorkspace();const response=await POST(new Request("http://127.0.0.1:3101/api/journal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({requestId,revision:s.revision,command:c})}));const data=await response.json();if(!response.ok)throw new Error(data.code||"CRUD failed");return data.state as Workspace;}
-async function ai(payload:object){const requestId=crypto.randomUUID();for(let attempt=0;attempt<5;attempt++){const response=await AI(new Request("http://127.0.0.1:3101/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...payload,requestId})}));const data=await response.json();if(attempt<4&&(data.code==="busy"||attempt<1&&data.code==="database")){await new Promise(r=>setTimeout(r,3500));continue;}return {status:response.status,...data};}throw new Error("AI retry exhausted");}
+async function command(c:Command,requestId=crypto.randomUUID()){const s=await snapshot();const response=await send("journal",new Request("http://127.0.0.1:3101/api/journal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({requestId,revision:s.revision,command:c})}));const data=await response.json();if(!response.ok)throw new Error(data.code||"CRUD failed");return data.state as Workspace;}
+async function ai(payload:object){const requestId=crypto.randomUUID();for(let attempt=0;attempt<5;attempt++){const response=await send("ai",new Request("http://127.0.0.1:3101/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...payload,requestId})}));const data=await response.json();if(attempt<4&&(data.code==="busy"||attempt<1&&data.code==="database")){await new Promise(r=>setTimeout(r,3500));continue;}return {status:response.status,...data};}throw new Error("AI retry exhausted");}
 try {
- const initial=await readWorkspace();initialConsent=initial.consent;const existing=new Set(initial.people.map(x=>x.id));
+ const initial=await snapshot();initialConsent=initial.consent;const existing=new Set(initial.people.map(x=>x.id));
  const requestId=crypto.randomUUID();const create:Command={kind:"person.save",fields:{name:"Тестовый персонаж · smoke",birth:null,city:"",job:"",context:"Вымышленная тестовая история. Предпочитает заранее согласованные планы.",likes:["прогулки"],dislikes:[]},today:localDate()};
  let s=await command(create,requestId);personId=s.people.find(x=>!existing.has(x.id))!.id;s=await command(create,requestId);if(s.people.filter(x=>x.id===personId).length!==1)throw new Error("duplicate");console.log("Cloud CRUD + idempotency: passed");
  if(!initial.consent)await command({kind:"consent",value:true});
@@ -19,6 +25,8 @@ try {
  await new Promise(r=>setTimeout(r,3100));const skipped=await ai({kind:"submitA",personId,sessionId:session.id,answers:["-","-","-"]});if(skipped.status!==200)throw new Error("skip:"+skipped.code);console.log("A all skipped atomic packet without model: passed");
  step="B questions";await new Promise(r=>setTimeout(r,3100));const b=await ai({kind:"questions",personId,type:"B",userQuestion:"Как спокойно обсудить, что мне важно заранее согласовывать изменения планов?"});if(b.status!==200)throw new Error(b.code);const bs=b.state.sessions.filter((x:{personId:string;type:string})=>x.personId===personId&&x.type==="B").at(-1);if(bs.questions.length!==3)throw new Error("B three");console.log("Real B three questions: passed");
  step="B answer";await new Promise(r=>setTimeout(r,3100));const final=await ai({kind:"submitB",personId,sessionId:bs.id,answers:["Мне важно предупреждение минимум за три часа.","Я хочу обсудить перенос в спокойном разговоре лично.","-"]});if(final.status!==200)throw new Error(final.code);const done=final.state.sessions.find((x:{id:string})=>x.id===bs.id);if(!done.result.nextStep||!done.result.blocks.some((x:{sources:{id:string}[]})=>x.sources.some(y=>y.id.startsWith(done.packets[0].id+":"))))throw new Error("B ignores answers");console.log("Real B uses submitted answers + next step: passed");
- const read=await GET();if(!read.ok)throw new Error("read");console.log("Fresh DB read: passed");
+ const read=apiBase?await fetch(apiBase+"/.netlify/functions/journal"):await GET();if(!read.ok)throw new Error("read");console.log("Fresh DB read: passed");
 }catch(e){console.error("Smoke-test:",step,e instanceof Error?e.message:"failed");process.exitCode=1;}finally{if(personId){try{await command({kind:"person.delete",id:personId});if(initialConsent===false)await command({kind:"consent",value:false});console.log("Only temporary synthetic person removed; consent restored");}catch{console.error("Temporary person cleanup pending");process.exitCode=1;}}}
+
+
 

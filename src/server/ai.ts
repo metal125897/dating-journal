@@ -5,12 +5,13 @@ import { readJSON, errorResponse } from "../lib/http";
 import { generate } from "../lib/provider";
 import { PROMPT_VERSION } from "../lib/prompts";
 const schema=z.object({requestId:z.uuid(),kind:z.enum(["tags","signals","questions","submitA","submitB","amendment"]),personId:z.uuid(),entryId:z.uuid().optional(),type:z.enum(["A","B"]).optional(),sessionId:z.uuid().optional(),userQuestion:z.string().trim().max(4000).optional(),answers:z.array(z.string().trim().min(1).max(20000)).length(3).optional(),questionIndex:z.number().int().min(0).max(2).optional(),text:z.string().trim().min(1).max(20000).optional()});
-export async function POST(request:Request){let operationId:string|undefined;let locked=false;try{
+export async function POST(request:Request){let operationId:string|undefined;let lockOwner:string|undefined;let locked=false;try{
  const b=schema.parse(await readJSON(request));operationId=b.requestId;const fingerprint=digest(b);
  if(await completed(b.requestId,fingerprint))return Response.json({state:await readWorkspace(),duplicate:true});
  const original=await readWorkspace();requireAI(original,b.personId,b.kind==="tags");
- if(!process.env.GIGACHAT_AUTH_KEY&&!(b.kind==="submitA"&&b.answers&&answersSchema(b.answers).every(x=>x.skipped)))fail("ai_config","AI ещё не подключён. Проверь Настройки.",503);
- await acquireAI(b.requestId,fingerprint,b.kind);locked=true;
+ const allSkipped=b.kind==="submitA"&&b.answers&&answersSchema(b.answers).every(x=>x.skipped);
+ if(!process.env.GIGACHAT_AUTH_KEY&&!allSkipped)fail("ai_config","AI ещё не подключён. Проверь Настройки.",503);
+ if(!allSkipped){lockOwner=await acquireAI(b.requestId,fingerprint,b.kind);locked=true;}
  const state:Workspace=structuredClone(original);const expectedBasis=digest(basisText(original,b.personId));const now=new Date().toISOString();
  const session=b.sessionId?state.sessions.find(x=>x.id===b.sessionId&&x.personId===b.personId):undefined;
  const skippedTopics=state.sessions.filter(x=>x.personId===b.personId).flatMap(x=>x.packets.flatMap(p=>p.answers.flatMap((a,i)=>a.skipped?[x.questions[i]?.topic||""]:[])));
@@ -34,7 +35,7 @@ export async function POST(request:Request){let operationId:string|undefined;let
   session.stage="done";session.basis=digest(basisText(state,b.personId));
  }
  const current=await readWorkspace();requireAI(current,b.personId,b.kind==="tags");if(current.revision!==original.revision||digest(basisText(current,b.personId))!==expectedBasis)fail("stale","Данные изменились во время анализа. Ответ не применён; повтори по актуальным записям.",409);
- const saved=await writeWorkspace(state,original.revision,b.requestId,fingerprint,"ai."+b.kind);await releaseAI(b.requestId);locked=false;
+ const saved=await writeWorkspace(state,original.revision,b.requestId,fingerprint,"ai."+b.kind);if(locked)await releaseAI(b.requestId,undefined,lockOwner).catch(()=>console.error("AI lease release deferred until expiry"));locked=false;
  return Response.json({state:saved},{headers:{"Cache-Control":"no-store"}});
-}catch(e){if(operationId&&locked)await releaseAI(operationId,e instanceof JournalError?e.code:"invalid_ai").catch(()=>{});return errorResponse(e);}}
+}catch(e){if(operationId&&locked)await releaseAI(operationId,e instanceof JournalError?e.code:"invalid_ai",lockOwner).catch(()=>{});return errorResponse(e);}}
 

@@ -1,0 +1,7 @@
+[build]
+  command = "npm run build:api"
+  publish = "api-public"
+[functions]
+  directory = "functions"
+  node_bundler = "esbuild"
+  included_files = ["certs/*.pem"]

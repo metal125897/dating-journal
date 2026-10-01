@@ -1,0 +1,21 @@
+# Модель данных
+
+Схема TypeScript и серверная валидация находятся в `src/lib/domain.ts`. SQL — `migrations/001_initial.sql`. Названия/идентификаторы технических сущностей не показываются пользователю.
+
+| Сущность | Данные |
+|---|---|
+| Workspace | schemaVersion, revision, consent, user.context, user.values, user.updatedAt |
+| Person | UUID, name, birth nullable, city, job, context, likes[], dislikes[], active/archived, archivedAt nullable, createdAt, updatedAt |
+| Entry | UUID, personId, text, eventDate, createdAt, updatedAt, version, tags[], manualTags, tagging pending/done/error |
+| Report | UUID, personId, result, verified sources, basis, model, promptVersion, generatedAt |
+| Question session | UUID, personId, A/B, userQuestion, три question с topic, stage, basis, result, generatedAt |
+| Answer packet | UUID, sessionId, answers[3] с text/skipped, submittedAt; append-only |
+| Amendment | UUID, sessionId, исходный вопрос, text, submittedAt, result; append-only |
+| Context addition | target user/person/interaction, sourceId исходного ответа, text; пользовательские свободные поля не заменяются |
+| Operation | UUID idempotency key, fingerprint, status, lease, errorCode, kind; безопасные служебные сведения |
+
+Дата события — календарная YYYY-MM-DD, SQL DATE; не конвертируется в UTC-полночь. Created/updated — ISO timestamp/timestamptz. Возраст вычисляется по местному календарю; будущая дата рождения запрещена. Теги только из фиксированного словаря, без дубликатов.
+
+Основание — хеш текущего персонального контекста, записей и тегов, пользовательских ценностей, отправленных ответов и дописок. Новое основание помечает старые результаты устаревшими. Удаление записи очищает затронутые AI-результаты; удаление человека удаляет все связанные данные. Удаление всей области очищает сущности, операции, локальные черновики и согласие, не делает seed.
+
+Изменения схемы одновременно отражать в типах, серверной валидации, SQL, клиентах, экспорте, тестах и этой документации. Миграции не уничтожают существующие данные. Секреты и значения environment в сущности не входят.

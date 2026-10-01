@@ -1,0 +1,35 @@
+{
+  "name": "dating-journal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "tsx --env-file-if-exists=.env.local scripts/dev-api.ts",
+    "build": "tsc --noEmit && vite build",
+    "build:api": "tsc --noEmit",
+    "start": "vite preview --host 127.0.0.1 --port 3100",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests",
+    "test": "tsx --test tests/*.test.ts",
+    "migrate": "node --env-file=.env.local scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "1.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "undici": "7.30.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^9.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0",
+    "vite": "^7.0.0"
+  }
+}

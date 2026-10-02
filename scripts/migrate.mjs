@@ -1,8 +1,8 @@
 import { neon } from '@neondatabase/serverless';
-import { readFile } from 'node:fs/promises';
+import { readFile,readdir } from 'node:fs/promises';
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL отсутствует: внеси значение в .env.local');
 const sql=neon(process.env.DATABASE_URL);
-const source=await readFile(new URL('../migrations/001_initial.sql',import.meta.url),'utf8');
+const directory=new URL('../migrations/',import.meta.url);const files=(await readdir(directory)).filter(x=>x.endsWith('.sql')).sort();const source=(await Promise.all(files.map(file=>readFile(new URL(file,directory),'utf8')))).join('\n');
 const statements=[];let start=0,single=false,dollar=false;
 for(let i=0;i<source.length;i++){
  if(!single&&source.slice(i,i+2)==='$$'){dollar=!dollar;i++;continue;}

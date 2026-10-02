@@ -6,10 +6,10 @@ import { readWorkspace, writeWorkspace, completed, digest, acquireAI, releaseAI 
 import { readJSON, errorResponse } from "../lib/http";
 import { generate } from "../lib/provider";
 import { PROMPT_VERSION } from "../lib/prompts";
-const schema=z.object({requestId:z.uuid(),kind:z.enum(["tags","signals","questions","submitA","submitB","amendment"]),personId:z.uuid(),entryId:z.uuid().optional(),type:z.enum(["A","B"]).optional(),sessionId:z.uuid().optional(),userQuestion:z.string().trim().max(4000).optional(),answers:z.array(z.string().trim().min(1).max(20000)).length(3).optional(),questionIndex:z.number().int().min(0).max(2).optional(),text:z.string().trim().min(1).max(20000).optional()});
-export async function POST(request:Request){return withRequestBudget(55000,()=>handlePOST(request));}
+export const aiRequestSchema=z.object({requestId:z.uuid(),kind:z.enum(["tags","signals","questions","submitA","submitB","amendment"]),personId:z.uuid(),entryId:z.uuid().optional(),type:z.enum(["A","B"]).optional(),sessionId:z.uuid().optional(),userQuestion:z.string().trim().max(4000).optional(),answers:z.array(z.string().trim().min(1).max(20000)).length(3).optional(),questionIndex:z.number().int().min(0).max(2).optional(),text:z.string().trim().min(1).max(20000).optional()});
+export async function POST(request:Request,budget=55000){return withRequestBudget(budget,()=>handlePOST(request));}
 async function handlePOST(request:Request){let operationId:string|undefined;let lockOwner:string|undefined;let locked=false;try{
- const b=schema.parse(await readJSON(request));operationId=b.requestId;const fingerprint=digest(b);
+ const b=aiRequestSchema.parse(await readJSON(request));operationId=b.requestId;const fingerprint=digest(b);
  if(await completed(b.requestId,fingerprint))return Response.json({state:await readWorkspace(),duplicate:true});
  const original=await readWorkspace();requireAI(original,b.personId,b.kind==="tags");
  const allSkipped=b.kind==="submitA"&&b.answers&&answersSchema(b.answers).every(x=>x.skipped);

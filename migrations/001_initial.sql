@@ -40,7 +40,7 @@ BEGIN
  IF FOUND AND previous.fingerprint<>op_fingerprint THEN RAISE EXCEPTION 'IDEMPOTENCY_MISMATCH'; END IF;
  IF previous.status='done' THEN RETURN jsonb_build_object('duplicate',true,'state',journal_read()); END IF;
  IF current_revision<>expected THEN RAISE EXCEPTION 'REVISION_CONFLICT'; END IF;
- IF op_kind='wipe' THEN DELETE FROM journal_operations; UPDATE journal_ai_lock SET owner=NULL,lease_until=now(); END IF;
+ IF op_kind='wipe' THEN DELETE FROM journal_ai_jobs; DELETE FROM journal_operations; UPDATE journal_ai_lock SET owner=NULL,lease_until=now(); END IF;
  DELETE FROM journal_entries WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(next_state->'entries') x WHERE (x->>'id')::uuid=journal_entries.id);
  FOR item IN SELECT * FROM jsonb_array_elements(next_state->'entries') LOOP
   INSERT INTO journal_entries(id,person_id,event_date,created_at,updated_at,body) VALUES((item->>'id')::uuid,(item->>'personId')::uuid,(item->>'eventDate')::date,(item->>'createdAt')::timestamptz,(item->>'updatedAt')::timestamptz,item-'eventDate'-'createdAt'-'updatedAt') ON CONFLICT(id) DO UPDATE SET person_id=EXCLUDED.person_id,event_date=EXCLUDED.event_date,updated_at=EXCLUDED.updated_at,body=EXCLUDED.body;

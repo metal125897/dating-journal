@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {demoWorkspace} from '../src/lib/demo';
+import {normalizeAnswer,validateResult,Session} from '../src/lib/domain';
+import {evidenceFor,resolveEvidence} from '../src/lib/evidence';
+import {generate} from '../src/lib/provider';
+import {withRequestBudget} from '../src/lib/request-budget';
+const s=demoWorkspace(),pid=s.people[0].id,id=crypto.randomUUID(),now=new Date().toISOString();
+const session:Session={id:crypto.randomUUID(),personId:pid,type:'A',userQuestion:'',questions:[{text:'Что обсуждали прямо?',topic:'обсуждение'},{text:'Что тебе важно?',topic:'ожидания'},{text:'Что ещё известно?',topic:'контекст'}],basis:'test',stage:'done',packets:[{id:crypto.randomUUID(),answers:['-','-','-'].map(normalizeAnswer),submittedAt:now}],amendments:[{id,questionIndex:0,text:'Мы лично договорились предупреждать о переносе заранее.',submittedAt:now,result:null}],result:null,generatedAt:now};s.sessions.push(session);
+const evidence=evidenceFor(s,pid);const input={person:{name:s.people[0].name},sources:evidence.fragments,questions:session.questions,type:'A',requiredAnswerRefs:[],requiredAmendmentRefs:evidence.refsFor(id),currentAmendment:{question:session.questions[0].text,refs:evidence.refsFor(id)},skippedTopics:session.questions.map(x=>x.topic)};
+const raw=await withRequestBudget(110000,()=>generate('amendment',input));const result=validateResult(resolveEvidence(raw,evidence),s,pid);
+assert.ok(result.blocks.some(b=>b.sources.some(x=>x.id===id)));
+console.log('Real A amendment: schema, current amendment source and exact quotes passed');

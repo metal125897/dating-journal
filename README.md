@@ -4,8 +4,11 @@
 
 Из этого каталога: `npm ci --cache .npm-cache`, создать `.env.local` по `.env.example`, заполнить серверные значения, `npm run migrate`. Затем в двух терминалах `npm run dev:api` и `npm run dev`. Адрес разработки: http://127.0.0.1:3100. Без БД приложение явно сообщает об отсутствии подключения; отдельное демо включается пользователем.
 
+Опубликованный адрес: https://metal125897.github.io/dating-journal/.
+
 Публикация: интерфейс на GitHub Pages, серверные Functions на Netlify Free, данные в Neon Free, модель GigaChat. Настройка описана в [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Проверки: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`. Запуск сборки: `npm start`. Не запускать команды из корня вишлиста.
 
-Контекст агента — AGENTS.md; документация — [docs/README.md](docs/README.md); полное ТЗ/макет — references. Секреты только .env.local/server environment, никогда в чат. Бесплатные облачные аккаунты, реальный вызов AI и доступ опубликованного адреса из РФ требуют фактического smoke-test; статус — docs/TEST_REPORT.md.
+Контекст агента — AGENTS.md; документация — [docs/README.md](docs/README.md); полное ТЗ/макет — локальный references (исключён из публичного репозитория). Секреты только .env.local/server environment, никогда в чат. Бесплатные облачные аккаунты, реальный вызов AI и доступ опубликованного адреса из РФ требуют фактического smoke-test; статус — docs/TEST_REPORT.md.
+

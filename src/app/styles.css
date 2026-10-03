@@ -134,6 +134,12 @@ html{scrollbar-gutter:stable}
 .person-card .profile>span:last-child{min-width:0;flex:1}
 .person-card strong,.person-card .small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .context-added{border-color:#a879ff66}
+.analysis-note{margin:16px 0 20px;line-height:1.6}
+.event-answer-type{margin-top:8px}
+.preferences{display:grid;gap:20px}
+.preference-group{display:grid;gap:8px;min-width:0}
+.preferences .preference-label{margin:0}
+.preference-chips{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
 .metric-row{white-space:nowrap}
 @media(min-width:768px){.nav{left:max(28px,calc((100% - 1040px)/2 + 28px))}.fab{right:max(18px,calc((100% - 1040px)/2 - 2px))}}
 

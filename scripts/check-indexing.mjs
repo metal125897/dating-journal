@@ -10,8 +10,8 @@ try{
  for(const suffix of ['', 'index.html', '?view=ai']){const r=await request(new URL(suffix,frontend));assert.equal(r.status,200);const html=await r.text();assert.match(html,/<meta\s+name="robots"\s+content="[^"]*noindex[^"]*nofollow[^"]*"/i);assert.match(html,/<meta\s+name="referrer"\s+content="no-referrer"/i);}
  console.log('Pages HTML: noindex/nofollow and no-referrer, including query routes: passed');
  const root=await request(api);assert.equal(root.status,200);headers(root);await root.body.cancel();
- // HEAD verifies the real function wrapper without reading or changing the diary.
- const journal=await request(new URL('/.netlify/functions/journal',api),{method:'HEAD'});assert.equal(journal.status,405);headers(journal);assert.equal(journal.headers.get('Cache-Control'),'no-store');
+ // Preflight verifies the deployed wrapper without executing the diary handler.
+ const journal=await request(new URL('/.netlify/functions/journal',api),{method:'OPTIONS'});assert.equal(journal.status,204);headers(journal);assert.equal(journal.headers.get('Cache-Control'),'no-store');
  const invalid=await request(new URL('/.netlify/functions/ai-status?requestId=invalid',api));assert.equal(invalid.status,400);headers(invalid);assert.equal(invalid.headers.get('Cache-Control'),'no-store');await invalid.body.cancel();
  const denied=await request(new URL('/.netlify/functions/journal',api),{headers:{Origin:'https://untrusted.test'}});assert.equal(denied.status,403);headers(denied);await denied.body.cancel();
  console.log('Netlify root, function and error responses: noindex/referrer headers: passed');

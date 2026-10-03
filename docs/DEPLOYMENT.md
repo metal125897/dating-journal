@@ -2,7 +2,7 @@
 
 Дневник — отдельный репозиторий `metal125897/dating-journal`. Не использовать Firebase, workflow, данные или secrets вишлиста.
 
-Клиент: GitHub Pages, статическая сборка `build/`, относительный Vite base. Сервер: Netlify Free Functions (`journal`, `ai`, `ai-background`, `ai-status`). БД: отдельный Neon Free проект `curly-tree-26583770`, Frankfurt. Модель: GigaChat-2-Max, API физлица, Freemium. Vercel исключён по запросу владельца.
+Клиент: GitHub Pages, статическая сборка `build/`, относительный Vite base. Сервер: Netlify Free Functions (`journal`, `ai`, `ai-background`, `ai-status`, `tags-background`). БД: отдельный Neon Free проект `curly-tree-26583770`, Frankfurt. Модель: GigaChat-2-Max, API физлица, Freemium. Vercel исключён по запросу владельца.
 
 [Netlify Free](https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/credit-based-pricing-plans/) имеет бесплатный лимит без автоматического пополнения. [Тариф GigaChat](https://developers.sber.ru/docs/ru/gigachat/tariffs/individual-tariffs) и остаток проверяются в Sber Studio; покупки токенов не включать. Достижение квоты останавливает AI, записи остаются доступны.
 
@@ -27,7 +27,7 @@
 
 `certs/russian-trusted-root.pem` получен с официального адреса, указанного в [документации Sber](https://developers.sber.ru/docs/ru/gigachat/certificates). SHA-256: `D2:6D:2D:02:31:B7:C3:9F:92:CC:73:85:12:BA:54:10:35:19:E4:40:5D:68:B5:BD:70:3E:97:88:CA:8E:CF:31`. Только серверный undici Agent добавляет CA к стандартным корням; `rejectUnauthorized=true`. Сертификат включён в пакет Functions; отключать TLS запрещено.
 
-Production: AI POST ставит задачу и возвращает 202. Background worker ограничен 120 секундами (сам анализ 110), генерация до 60 секунд, OAuth до 8, резерв БД 12. Клиент опрашивает ai-status до 140 секунд. AI-lease 150 секунд, job-lease 130 секунд, интервал модели 3 секунды. [Background Functions](https://docs.netlify.com/build/functions/background-functions/) доступны в Free и поддерживают до 15 минут; наш бюджет существенно меньше. Миграция 002 добавляет только техническую таблицу заданий, не меняет записи дневника. npm run migrate применяет все SQL в порядке имени.
+Production: AI POST ставит задачу и возвращает 202. Background worker ограничен 240 секундами (сам анализ 110), генерация до 60 секунд, OAuth до 8, резерв БД 12. Клиент опрашивает ai-status до 280 секунд. AI-lease 150 секунд, job-lease 260 секунд, интервал модели 3 секунды. [Background Functions](https://docs.netlify.com/build/functions/background-functions/) доступны в Free и поддерживают до 15 минут; наш бюджет существенно меньше. Миграция 002 добавляет только техническую таблицу заданий, не меняет записи дневника. npm run migrate применяет все SQL в порядке имени.
 
 Фактические результаты — `TEST_REPORT.md`. Публичную ссылку и статус «проверено» записывать только после успешного открытия.
 
@@ -37,3 +37,5 @@ Production: AI POST ставит задачу и возвращает 202. Backg
 
 
 На стенде 2 октября зафиксирован обрыв обычного и потокового запроса на 30 000 мс. Потоковый эксперимент удалён. Для production используется отдельная фоновая функция; успешный результат подтверждать её статусом и чтением из БД, а не HTTP 202.
+
+003 — добавочная миграция приоритета и singleton tags worker; прежние автоматические теги переводятся в pending для нового словаря. Платные возможности не подключаются. Worker тегов ждёт/обрабатывает очередь до 450 секунд, lease 10 минут; анализ имеет приоритет перед следующим вызовом тегов. После применения миграции публиковать сервер и клиент одной версии; ранее полученные вопросы могут потребовать нового пакета из-за смены состава основания.

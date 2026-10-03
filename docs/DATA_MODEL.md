@@ -4,7 +4,7 @@
 
 | Сущность | Данные |
 |---|---|
-| Workspace | schemaVersion, revision, consent, user.context, user.values, user.updatedAt |
+| Workspace | schemaVersion, revision, consent, user.context, user.values, user.expectations, user.aiContext[], user.excludedMemorySources[], user.updatedAt |
 | Person | UUID, name, birth nullable, city, job, context, likes[], dislikes[], active/archived, archivedAt nullable, createdAt, updatedAt |
 | Entry | UUID, personId, text, eventDate, createdAt, updatedAt, version, tags[], manualTags, tagging pending/done/error |
 | Report | UUID, personId, result, verified sources, basis, model, promptVersion, generatedAt |
@@ -23,3 +23,5 @@
 Короткие ref модели существуют только внутри одного запроса. В БД и экспорте по-прежнему сохраняются проверенные sources {id,quote,label}, additions.sourceId; миграция данных для нового цитирования не требуется.
 
 AI job: journal_ai_jobs хранит UUID, fingerprint, queued/running/done/error, lease_until, безопасные error_code/message/status и updated_at. Текст запроса, ключи и копия дневника в задаче не хранятся. Повтор с другим fingerprint отклоняется; worker может захватить queued только один раз. Явный повтор error создаёт новую попытку того же запроса. Wipe атомарно очищает также задания; старый worker не возвращает удалённые данные из снимка благодаря CAS.
+
+Memory: id, text, sourceId (служебное происхождение), personId, updatedAt, edited. UI настроек не показывает источники. excludedMemorySources хранит ID удалённых дополнений, предотвращая их повторное импортирование. Удаление человека чистит связанные memory/exclusions; wipe всё сбрасывает. AnswerEvent — проекция Packet с вопросами/ответами/датой, не новая копия Entry; порог AI считает только Entry. 003 добавляет request_kind в AI job и singleton journal_tag_worker; pending Entry сохраняет очередь. Автоматические теги не меняют версию содержания; ручные правки меняют её. В хеше фактического основания нет технического состояния автоматической разметки.

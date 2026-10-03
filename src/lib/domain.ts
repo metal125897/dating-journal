@@ -1,7 +1,10 @@
 import { z } from "zod";
 
-export const TAGS = ["контакт", "напряжение", "поступок", "договорённость", "рефлексия"] as const;
-export type Tag = typeof TAGS[number];
+export const TAGS = ["слова партнёра", "действия партнёра", "мои слова", "мои действия", "мои мысли и чувства", "договорённости", "позитивный опыт", "негативный опыт"] as const;
+export const LEGACY_TAGS = ["контакт", "напряжение", "поступок", "договорённость", "рефлексия"] as const;
+export const ALL_TAGS = [...TAGS,...LEGACY_TAGS] as const;
+export type Tag = typeof ALL_TAGS[number];
+export type Memory = {id:string;text:string;sourceId:string;personId:string;updatedAt:string;edited?:boolean};
 export type Person = { id:string; name:string; birth:string|null; city:string; job:string; context:string; likes:string[]; dislikes:string[]; status:"active"|"archived"; archivedAt:string|null; createdAt:string; updatedAt:string };
 export type Entry = { id:string; personId:string; text:string; eventDate:string; createdAt:string; updatedAt:string; version:number; tags:Tag[]; manualTags:boolean; tagging:"pending"|"done"|"error" };
 export type Source = { id:string; quote:string; label?:string };
@@ -12,8 +15,20 @@ export type Question = { text:string; topic:string };
 export type Packet = { id:string; answers:{text:string; skipped:boolean}[]; submittedAt:string };
 export type Amendment = {id:string; questionIndex:number; text:string; submittedAt:string; result:Result|null};
 export type Session = { id:string; personId:string; type:"A"|"B"; userQuestion:string; questions:Question[]; basis:string; stage:"questions"|"done"; packets:Packet[]; amendments:Amendment[]; result:Result|null; generatedAt:string };
-export type Workspace = {schemaVersion:1; revision:number; consent:boolean; user:{context:string; values:string[]; updatedAt:string}; people:Person[]; entries:Entry[]; reports:SavedResult[]; sessions:Session[]};
-export function emptyWorkspace(): Workspace { return {schemaVersion:1,revision:0,consent:false,user:{context:"",values:[],updatedAt:""},people:[],entries:[],reports:[],sessions:[]}; }
+export type Workspace = {schemaVersion:1; revision:number; consent:boolean; user:{context:string; values:string[]; expectations?:string; aiContext?:Memory[]; excludedMemorySources?:string[]; updatedAt:string}; people:Person[]; entries:Entry[]; reports:SavedResult[]; sessions:Session[]};
+export function emptyWorkspace(): Workspace { return {schemaVersion:1,revision:0,consent:false,user:{context:"",values:[],expectations:"",aiContext:[],excludedMemorySources:[],updatedAt:""},people:[],entries:[],reports:[],sessions:[]}; }
+// Older exports are additive: materialize once, never restore deleted memories.
+export function normalizeWorkspace(s:Workspace):Workspace {
+ if(s.user.aiContext===undefined){s.user.aiContext=[];for(const session of s.sessions){const results=[{id:session.id,result:session.result},...session.amendments.map(a=>({id:a.id,result:a.result}))];for(const saved of results)for(const [i,a] of (saved.result?.additions||[]).entries())if(a.target==='user'&&!s.user.aiContext.some(m=>m.text===a.text))s.user.aiContext.push({id:saved.id+':user:'+i,text:a.text,sourceId:a.sourceId,personId:session.personId,updatedAt:session.generatedAt});}}
+ s.user.expectations??='';s.user.excludedMemorySources??=[];return s;
+}
+export function addMemories(s:Workspace,pid:string,result:Result,now:string,uuid:()=>string=()=>crypto.randomUUID()) {
+ normalizeWorkspace(s);const added:Memory[]=[];const knownSources=new Set(s.user.aiContext!.map(m=>m.sourceId));
+ for(const a of result.additions||[])if(a.target==='user'&&!s.user.excludedMemorySources!.includes(a.sourceId)&&!knownSources.has(a.sourceId)&&!s.user.aiContext!.some(m=>m.text.toLowerCase()===a.text.toLowerCase())){const m={id:uuid(),text:a.text,sourceId:a.sourceId,personId:pid,updatedAt:now};s.user.aiContext!.push(m);added.push(m);}
+ return added;
+}
+export type AnswerEvent={id:string;personId:string;eventDate:string;createdAt:string;text:string;sessionId:string;packetId:string;type:'A'|'B'};
+export function answerEvents(s:Workspace):AnswerEvent[]{return s.sessions.flatMap(session=>session.packets.map(packet=>({id:packet.id,personId:session.personId,eventDate:localDate(new Date(packet.submittedAt)),createdAt:packet.submittedAt,sessionId:session.id,packetId:packet.id,type:session.type,text:packet.answers.map((a,i)=>`${session.questions[i]?.text||'Вопрос '+(i+1)}\n${a.skipped?'Без ответа':a.text}`).join('\n\n')})));}
 export class JournalError extends Error { constructor(public code:string, message:string, public status=400) {super(message);} }
 export function fail(code:string,message:string,status=400):never {throw new JournalError(code,message,status);}
 const text = z.string().trim().max(20000);
@@ -28,13 +43,17 @@ export const commandSchema = z.discriminatedUnion("kind",[
  z.object({kind:z.literal("person.delete"),id}),
  z.object({kind:z.literal("entry.save"),id:id.optional(),personId:id,text:required,eventDate:dateSchema}),
  z.object({kind:z.literal("entry.delete"),id}),
- z.object({kind:z.literal("entry.tags"),id,tags:z.array(z.enum(TAGS)).max(5)}),
- z.object({kind:z.literal("user.save"),context:text,values:list}),
+ z.object({kind:z.literal("entry.retryTags"),id}),
+ z.object({kind:z.literal("entry.tags"),id,tags:z.array(z.enum(ALL_TAGS)).max(ALL_TAGS.length)}),
+ z.object({kind:z.literal("user.save"),context:text,values:list,expectations:text.optional()}),
+ z.object({kind:z.literal("memory.save"),id:z.string().min(1).max(120),text:required}),
+ z.object({kind:z.literal("memory.delete"),id:z.string().min(1).max(120)}),
  z.object({kind:z.literal("consent"),value:z.boolean()}),
  z.object({kind:z.literal("wipe"),confirm:z.literal("DELETE")})
 ]);
 export type Command = z.infer<typeof commandSchema>;
-export const requestSchema = z.object({requestId:id,revision:z.number().int().nonnegative(),command:commandSchema});
+export const requestSchema = z.object({requestId:id,revision:z.number().int().nonnegative(),contentBasis:z.string().regex(/^[a-f0-9]{64}$/).optional(),command:commandSchema});
+export function commandBasisText(s:Workspace){return JSON.stringify({people:s.people,user:{context:s.user.context,values:s.user.values,expectations:s.user.expectations||"",aiContext:(s.user.aiContext||[]).map(m=>({id:m.id,text:m.text,edited:!!m.edited})),excludedMemorySources:s.user.excludedMemorySources||[]},consent:s.consent,entries:s.entries.map(e=>({id:e.id,personId:e.personId,text:e.text,eventDate:e.eventDate,createdAt:e.createdAt,manualTags:e.manualTags,tags:e.manualTags?e.tags:[]})),answers:s.sessions.filter(x=>x.packets.length||x.amendments.length).map(x=>({id:x.id,packets:x.packets,amendments:x.amendments.map(a=>({id:a.id,text:a.text}))}))});}
 export function normalizeAnswer(v:string) {const t=v.trim();return {text:t==="-"||t==="—"?"":t,skipped:t==="-"||t==="—"};}
 export function answersSchema(v:unknown) {return z.array(required).length(3).parse(v).map(normalizeAnswer);}
 export function personalEntries(s:Workspace,pid:string) {return s.entries.filter(e=>e.personId===pid).sort((a,b)=>b.eventDate.localeCompare(a.eventDate)||b.createdAt.localeCompare(a.createdAt));}
@@ -45,10 +64,12 @@ export function sourceMap(s:Workspace,pid:string):Map<string,{text:string;label:
  for(const e of personalEntries(s,pid))m.set(e.id,{text:e.text,label:e.eventDate});
  m.set("person-context",{text:p.context,label:"Контекст человека"});m.set("person-likes",{text:p.likes.join(", "),label:"Что любит"});m.set("person-dislikes",{text:p.dislikes.join(", "),label:"Что не любит"});
  m.set("user-context",{text:s.user.context,label:"О себе"});m.set("user-values",{text:s.user.values.join(", "),label:"Мои ценности"});
+ m.set("user-expectations",{text:s.user.expectations||'',label:"Мои ожидания от партнёра"});
+ for(const memory of s.user.aiContext||[])m.set('user-memory:'+memory.id,{text:memory.text,label:'Контекст о тебе'});
  for(const session of s.sessions.filter(x=>x.personId===pid)) {for(const packet of session.packets) packet.answers.forEach((a,i)=>{if(!a.skipped)m.set(packet.id+":"+i,{text:a.text,label:"Ответ на вопрос "+(i+1)});});for(const a of session.amendments)m.set(a.id,{text:a.text,label:"Дописка"});}
  return m;
 }
-export function basisText(s:Workspace,pid:string) {const p=requirePerson(s,pid);return JSON.stringify({person:p,user:s.user,entries:personalEntries(s,pid),answers:s.sessions.filter(x=>x.personId===pid&&(x.packets.length||x.amendments.length)).map(x=>({id:x.id,packets:x.packets,amendments:x.amendments.map(a=>({id:a.id,text:a.text,questionIndex:a.questionIndex}))}))});}
+export function basisText(s:Workspace,pid:string) {const p=requirePerson(s,pid);return JSON.stringify({person:p,user:{context:s.user.context,values:s.user.values,expectations:s.user.expectations||"",aiContext:(s.user.aiContext||[]).map(m=>({id:m.id,text:m.text,edited:!!m.edited})),excludedMemorySources:s.user.excludedMemorySources||[]},entries:personalEntries(s,pid).map(e=>({id:e.id,text:e.text,eventDate:e.eventDate,createdAt:e.createdAt,manualTags:e.manualTags,tags:e.manualTags?e.tags:[]})),answers:s.sessions.filter(x=>x.personId===pid&&(x.packets.length||x.amendments.length)).map(x=>({id:x.id,packets:x.packets,amendments:x.amendments.map(a=>({id:a.id,text:a.text,questionIndex:a.questionIndex}))}))});}
 const sourceSchema=z.object({id:z.string().min(1),quote:required});
 export const resultSchema=z.object({blocks:z.array(z.object({kind:z.enum(["pattern","attention","positive","basis","facts","user","hypothesis","answers"]),title:z.string().min(1).max(200),text:required,sources:z.array(sourceSchema).max(20).default([])})).min(1).max(30),summary:required,nextStep:z.preprocess(v=>v===null||typeof v==="string"&&!v.trim()?undefined:v,required.optional()),additions:z.array(z.object({target:z.enum(["user","person","interaction"]),sourceId:z.string(),text:required})).max(12).optional()});
 export const questionsSchema=z.object({questions:z.array(z.object({text:z.string().trim().min(5).max(500).transform(v=>v.replace(/\?(?:\s*\?)+$/,"?")).refine(v=>(v.match(/\?/g)||[]).length===1,"Каждый пункт содержит один вопрос"),topic:z.string().trim().min(1).max(100)})).length(3)});
@@ -65,14 +86,14 @@ export function validateResult(raw:unknown,s:Workspace,pid:string):Result {
  return result;
 }
 export function applyCommand(original:Workspace,c:Command,now=new Date().toISOString(),uuid=()=>crypto.randomUUID()):Workspace {
- const s=structuredClone(original);
+ const s=normalizeWorkspace(structuredClone(original));
  if(c.kind==="wipe"){const e=emptyWorkspace();e.revision=s.revision;return e;}
  if(c.kind==="person.save") {
   if(c.fields.birth&&c.fields.birth>c.today)fail("date","Дата рождения не может быть в будущем");
   if(c.id){const p=requirePerson(s,c.id);Object.assign(p,c.fields,{updatedAt:now});}else s.people.push({...c.fields,id:uuid(),status:"active",archivedAt:null,createdAt:now,updatedAt:now});
  }
  if(c.kind==="person.archive") {const p=requirePerson(s,c.id);p.status=c.archived?"archived":"active";p.archivedAt=c.archived?now:null;p.updatedAt=now;}
- if(c.kind==="person.delete") {requirePerson(s,c.id);s.people=s.people.filter(x=>x.id!==c.id);s.entries=s.entries.filter(x=>x.personId!==c.id);s.reports=s.reports.filter(x=>x.personId!==c.id);s.sessions=s.sessions.filter(x=>x.personId!==c.id);}
+ if(c.kind==="person.delete") {requirePerson(s,c.id);const ownedSources=new Set(s.sessions.filter(x=>x.personId===c.id).flatMap(x=>[...x.packets.flatMap(packet=>packet.answers.map((_,i)=>packet.id+":"+i)),...x.amendments.map(a=>a.id)]));s.user.excludedMemorySources=s.user.excludedMemorySources!.filter(id=>!ownedSources.has(id));s.people=s.people.filter(x=>x.id!==c.id);s.entries=s.entries.filter(x=>x.personId!==c.id);s.reports=s.reports.filter(x=>x.personId!==c.id);s.sessions=s.sessions.filter(x=>x.personId!==c.id);s.user.aiContext=s.user.aiContext!.filter(m=>m.personId!==c.id);}
  if(c.kind==="entry.save") {
   const p=requirePerson(s,c.personId);if(!c.id&&p.status==="archived")fail("archived","Сначала верни человека из архива");
   if(c.id){const e=s.entries.find(x=>x.id===c.id)||fail("missing","Запись не найдена",404);if(e.personId!==c.personId){s.reports=[];s.sessions=s.sessions.map(x=>({...x,result:null,amendments:x.amendments.map(a=>({...a,result:null}))}));}Object.assign(e,{personId:c.personId,text:c.text,eventDate:c.eventDate,updatedAt:now,version:e.version+1,tagging:e.manualTags?"done":"pending"});}
@@ -80,7 +101,9 @@ export function applyCommand(original:Workspace,c:Command,now=new Date().toISOSt
  }
  if(c.kind==="entry.delete") {const e=s.entries.find(x=>x.id===c.id)||fail("missing","Запись не найдена",404);s.entries=s.entries.filter(x=>x.id!==c.id);s.reports=s.reports.filter(x=>x.personId!==e.personId);s.sessions=s.sessions.map(x=>x.personId===e.personId?{...x,result:null,amendments:x.amendments.map(a=>({...a,result:null}))}:x);}
  if(c.kind==="entry.tags") {const e=s.entries.find(x=>x.id===c.id)||fail("missing","Запись не найдена",404);e.tags=[...new Set(c.tags)];e.manualTags=true;e.tagging="done";e.version++;e.updatedAt=now;}
- if(c.kind==="user.save")s.user={context:c.context,values:[...new Set(c.values)],updatedAt:now};
+ if(c.kind==='entry.retryTags'){const e=s.entries.find(x=>x.id===c.id)||fail('missing','Запись не найдена',404);if(e.manualTags)fail('manual','Теги уже изменены вручную',409);e.tagging='pending';e.version++;}
+ if(c.kind==="user.save")s.user={...s.user,context:c.context,values:[...new Set(c.values)],expectations:c.expectations??s.user.expectations,updatedAt:now};
+ if(c.kind==='memory.save'||c.kind==='memory.delete'){const m=s.user.aiContext!.find(m=>m.id===c.id)||fail('missing','Контекст не найден',404);if(c.kind==='memory.save'){m.text=c.text;m.edited=true;m.updatedAt=now;}else{s.user.excludedMemorySources=[...new Set([...s.user.excludedMemorySources!,m.sourceId])];s.user.aiContext=s.user.aiContext!.filter(x=>x.id!==c.id);}s.user.updatedAt=now;}
  if(c.kind==="consent")s.consent=c.value;
  return s;
 }

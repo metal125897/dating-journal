@@ -127,3 +127,13 @@ button,input,textarea,summary{font-family:inherit}button{display:inline-flex;ali
 
 .source-target { outline: 2px solid var(--accent, #a879ff); outline-offset: 4px; scroll-margin: 100px; }
 
+html{scrollbar-gutter:stable}
+.search-wrap>svg{top:50%;transform:translateY(-50%);pointer-events:none}
+.search-wrap>input:not([type=checkbox]){padding-inline-start:46px;min-height:54px}
+.person-card{height:86px;min-height:86px;max-height:86px;overflow:hidden}
+.person-card .profile>span:last-child{min-width:0;flex:1}
+.person-card strong,.person-card .small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.context-added{border-color:#a879ff66}
+.metric-row{white-space:nowrap}
+@media(min-width:768px){.nav{left:max(28px,calc((100% - 1040px)/2 + 28px))}.fab{right:max(18px,calc((100% - 1040px)/2 - 2px))}}
+

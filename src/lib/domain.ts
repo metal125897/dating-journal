@@ -27,6 +27,16 @@ export function addMemories(s:Workspace,pid:string,result:Result,now:string,uuid
  for(const a of result.additions||[])if(a.target==='user'&&!s.user.excludedMemorySources!.includes(a.sourceId)&&!knownSources.has(a.sourceId)&&!s.user.aiContext!.some(m=>m.text.toLowerCase()===a.text.toLowerCase())){const m={id:uuid(),text:a.text,sourceId:a.sourceId,personId:pid,updatedAt:now};s.user.aiContext!.push(m);added.push(m);}
  return added;
 }
+export function answerMemoryResult(result:Result,packet:Packet):Result {
+ const additions=[...(result.additions||[])];
+ // Preserve explicit self-statements verbatim when the model omits an addition.
+ // This never turns partner behaviour or an inferred motive into user context.
+ for(const [i,answer] of packet.answers.entries())if(!answer.skipped&&!additions.some(a=>a.target==='user'&&a.sourceId===packet.id+':'+i)){
+  const sentences=answer.text.match(/[^.!?\n]+(?:[.!?]+|(?=\n)|$)/gu)||[];
+  for(const sentence of sentences){const statement=sentence.trim();if(/^(?:я (?:ценю|хочу|предпочитаю)|мне (?:важно|важна|важны|подходит|подходят)|для меня важно|мои ценности)(?=\s|[.,:;!?]|$)/iu.test(statement))additions.push({target:'user',sourceId:packet.id+':'+i,text:statement});}
+ }
+ return {...result,additions};
+}
 export type AnswerEvent={id:string;personId:string;eventDate:string;createdAt:string;text:string;sessionId:string;packetId:string;type:'A'|'B'};
 export function answerEvents(s:Workspace):AnswerEvent[]{return s.sessions.flatMap(session=>session.packets.map(packet=>({id:packet.id,personId:session.personId,eventDate:localDate(new Date(packet.submittedAt)),createdAt:packet.submittedAt,sessionId:session.id,packetId:packet.id,type:session.type,text:packet.answers.map((a,i)=>`${session.questions[i]?.text||'Вопрос '+(i+1)}\n${a.skipped?'Без ответа':a.text}`).join('\n\n')})));}
 export class JournalError extends Error { constructor(public code:string, message:string, public status=400) {super(message);} }

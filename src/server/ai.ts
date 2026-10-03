@@ -1,7 +1,7 @@
 import {evidenceFor,resolveEvidence} from "../lib/evidence";
 import {withRequestBudget} from "../lib/request-budget";
 import { z } from "zod";
-import { Workspace, Session, TAGS, requireAI, requirePerson, personalEntries, basisText, questionsSchema, validateResult, answersSchema, JournalError, fail, addMemories } from "../lib/domain";
+import { Workspace, Session, TAGS, requireAI, requirePerson, personalEntries, basisText, questionsSchema, validateResult, answersSchema, JournalError, fail, addMemories,answerMemoryResult } from "../lib/domain";
 import { readWorkspace, writeWorkspace, completed, digest, acquireAI, releaseAI } from "../lib/repository";
 import { readJSON, errorResponse } from "../lib/http";
 import { generate } from "../lib/provider";
@@ -36,7 +36,7 @@ async function handlePOST(request:Request){let operationId:string|undefined;let 
   if(b.kind==="submitA"&&session.packets.at(-1)?.answers.every(x=>x.skipped))session.result={blocks:[{kind:"basis",title:"Без ответа",text:"Пропуски сохранены как границы тем. Новых фактов и дополнений нет; модель не вызывалась.",sources:[]}],summary:"Все три ответа пропущены. Новых фактов для Сигналов нет.",additions:[]};
   else {const result=await validated(v=>{const r=validateResult(resolveEvidence(v,evidence),state,b.personId);if(b.kind==="submitB"&&!r.nextStep)fail("invalid_ai","В ответе нет следующего шага",502);if(amendmentId&&!r.blocks.some(x=>x.sources.some(y=>y.id===amendmentId)))fail("invalid_sources","Модель не использовала текущую дописку",502);if((b.kind==="submitA"||b.kind==="submitB")&&session.packets.at(-1)?.answers.some(x=>!x.skipped)&&!r.blocks.some(x=>x.sources.some(y=>y.id.startsWith(packetId+":"))))fail("invalid_sources","Модель не использовала отправленные ответы",502);return r;});if(amendmentId)session.amendments.find(x=>x.id===amendmentId)!.result=result;else session.result=result;}
   session.stage="done";
-  if(session.result&&!amendmentId)addMemories(state,b.personId,session.result,now);
+  if(session.result&&!amendmentId)addMemories(state,b.personId,b.kind==='submitA'?answerMemoryResult(session.result,session.packets.at(-1)!):session.result,now);
   session.basis=digest(basisText(state,b.personId));
   if(b.kind==='submitA'&&!allSkipped&&session.result){state.reports=state.reports.filter(x=>x.personId!==b.personId);state.reports.push({id:crypto.randomUUID(),personId:b.personId,basis:session.basis,result:session.result,generatedAt:now,model:process.env.GIGACHAT_MODEL||'GigaChat-2-Max',promptVersion:PROMPT_VERSION});}
  }

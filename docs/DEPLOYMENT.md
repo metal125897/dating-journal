@@ -31,6 +31,8 @@ Production: AI POST ставит задачу и возвращает 202. Backg
 
 Фактические результаты — `TEST_REPORT.md`. Публичную ссылку и статус «проверено» записывать только после успешного открытия.
 
+Ограничение индексации: Pages использует meta robots в исходном index.html (включая все query-маршруты). GitHub Pages не настраивается через Netlify _headers. Netlify статические файлы получают X-Robots-Tag/Referrer-Policy из netlify.toml; Functions устанавливают их самостоятельно в src/lib/http.ts, поскольку [статические custom headers не применяются к Functions](https://docs.netlify.com/manage/routing/headers/#limitations). Для read-only проверки после деплоя задать INDEXING_FRONTEND_URL и INDEXING_API_URL в окружении и выполнить `node scripts/check-indexing.mjs`. Скрипт не вызывает модель и не читает записи дневника. Прямые production-адреса не размещать в README и публичном отчёте; передавать владельцу отдельно.
+
 ## Проверка секретов Netlify
 
 Секретны только `DATABASE_URL` и `GIGACHAT_AUTH_KEY`. При первоначальном импорте публичные `FRONTEND_ORIGIN`, `GIGACHAT_MODEL`, `GIGACHAT_SCOPE` также получили неизменяемый secret flag. Журнал сборки подтвердил ложные срабатывания ровно для этих трёх ключей. `SECRETS_SCAN_OMIT_KEYS` в netlify.toml исключает только их; сканирование настоящих ключей и остальных файлов остаётся включённым. Не расширять список на credentials и не выключать сканер. [Правила Netlify](https://docs.netlify.com/manage/security/secret-scanning/).
